@@ -41,7 +41,7 @@ type Event struct {
 // ウェブソケットをハンドルする
 type WebsocketHandler struct {
 	WSMutex sync.Mutex
-	Conn    []*websocket.Conn
+	Conn    map[*websocket.Conn]bool
 	Seq     int64
 }
 
@@ -84,7 +84,7 @@ func (h *WebsocketHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 	logging.Info("[内部] 受信 %v", data)
 
-	h.Conn = append(h.Conn, ws)
+	h.Conn[ws] = true
 }
 
 // 渡された関数をゴルーチンですべてのウェブソケット接続で実行する
@@ -92,7 +92,10 @@ func (h *WebsocketHandler) Handle(w http.ResponseWriter, r *http.Request) {
 // TODO: もっといい方法があるはず
 // TODO: ウェブソケット接続がクローズしたときに破綻する
 func (h *WebsocketHandler) Broadcast(f func(*websocket.Conn)) {
-	for _, c := range h.Conn {
+	for c, ok := range h.Conn {
+		if !ok {
+			continue
+		}
 		go func(c *websocket.Conn) {
 			h.WSMutex.Lock()
 			f(c)
