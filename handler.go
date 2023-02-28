@@ -47,7 +47,9 @@ type WebsocketHandler struct {
 
 // 新たなウェブソケットハンダラを生成する
 func NewWebSocketHandler() *WebsocketHandler {
-	return &WebsocketHandler{}
+	return &WebsocketHandler{
+		Conn: make(map[*websocket.Conn]bool),
+	}
 }
 
 // ウェブソケット接続をハンドルする
@@ -55,6 +57,10 @@ func (h *WebsocketHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	logging.Debug("called")
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
+			if r.URL.Host != "api.sabafly.net" && r.URL.Host == "localhost:8686" {
+				return false
+			}
+			// TODO: tokenか何かで認証したい
 			return true
 		},
 	}
@@ -85,12 +91,27 @@ func (h *WebsocketHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	logging.Info("[内部] 受信 %v", data)
 
 	h.Conn[ws] = true
+
+	go h.Listen(ws)
+}
+
+func (h *WebsocketHandler) Listen(c *websocket.Conn) {
+	for {
+		var event Event
+		err := c.ReadJSON(&event)
+		if err != nil {
+			logging.Info("切断されました %s:%s", c.LocalAddr().Network(), c.LocalAddr().String())
+			delete(h.Conn, c)
+			return
+		}
+
+		// TODO: 受け取ったイベントを処理する
+	}
 }
 
 // 渡された関数をゴルーチンですべてのウェブソケット接続で実行する
 //
 // TODO: もっといい方法があるはず
-// TODO: ウェブソケット接続がクローズしたときに破綻する
 func (h *WebsocketHandler) Broadcast(f func(*websocket.Conn)) {
 	for c, ok := range h.Conn {
 		if !ok {
